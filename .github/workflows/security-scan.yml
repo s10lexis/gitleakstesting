@@ -45,12 +45,20 @@ jobs:
             echo "status=success" >> $GITHUB_OUTPUT
           fi
 
+      # ✅ UPDATED SLACK STEP
       - name: Send Slack Alert on Failure
         if: steps.status_check.outputs.status == 'failure'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
-          curl -X POST -H 'Content-type: application/json' --data \
-          '{"text":"🚨 *Security Scan Failed!* One or more issues were detected in the pipeline. Please review immediately."}' \
-          ${{ secrets.SLACK_WEBHOOK_URL }}
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "SLACK_WEBHOOK_URL is empty. Add it in GitHub → Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+          curl -X POST -H "Content-type: application/json" \
+            --data "{\"text\":\"🚨 *Security Scan Failed!* One or more issues were detected in the pipeline for ${GITHUB_REPOSITORY} on ${GITHUB_REF}. Check the GitHub Actions run for details.\"}" \
+            "$SLACK_WEBHOOK_URL"
 
       - name: Send Teams Alert on Failure
         if: steps.status_check.outputs.status == 'failure'
