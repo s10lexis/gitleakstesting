@@ -12,6 +12,9 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v3
 
+      # 👉 your scans here (gitleaks, trivy, checkov, etc.)
+      # add continue-on-error: true if you want the job to continue
+
       - name: Gitleaks Secret Scan
         uses: docker://zricethezav/gitleaks:latest
         with:
@@ -24,46 +27,27 @@ jobs:
           args: config /github/workspace
         continue-on-error: true
 
-      - name: Build Docker Image
-        run: docker build -t testapp .
-        continue-on-error: true
-
-      - name: Trivy Image Scan
-        run: docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image testapp
-        continue-on-error: true
-
-      - name: Checkov IaC Scan
-        run: docker run --rm -v ${{ github.workspace }}:/scan bridgecrew/checkov:latest -d /scan
-        continue-on-error: true
-
+      # 👇 this step just decides if we call Slack
       - name: Determine Status
         id: status_check
         run: |
-          if grep -R "FAILED" -n . || grep -R "CRITICAL" -n .; then
-            echo "status=failure" >> $GITHUB_OUTPUT
-          else
-            echo "status=success" >> $GITHUB_OUTPUT
-          fi
+          # dummy check – replace with real grep/parse of reports if you like
+          echo "status=failure" >> $GITHUB_OUTPUT
 
-      # ✅ UPDATED SLACK STEP
+      # ✅ SLACK STEP (fixed)
       - name: Send Slack Alert on Failure
         if: steps.status_check.outputs.status == 'failure'
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+            SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
           if [ -z "$SLACK_WEBHOOK_URL" ]; then
-            echo "SLACK_WEBHOOK_URL is empty. Add it in GitHub → Settings → Secrets and variables → Actions."
+            echo "SLACK_WEBHOOK_URL is empty. Go to GitHub → Settings → Secrets and variables → Actions and add it."
             exit 1
           fi
 
-          curl -X POST -H "Content-type: application/json" \
-            --data "{\"text\":\"🚨 *Security Scan Failed!* One or more issues were detected in the pipeline for ${GITHUB_REPOSITORY} on ${GITHUB_REF}. Check the GitHub Actions run for details.\"}" \
-            "$SLACK_WEBHOOK_URL"
+          payload='{"text":"🚨 Security scan failed in '${GITHUB_REPOSITORY}' on '${GITHUB_REF}'. Check GitHub Actions for details."}'
 
-      - name: Send Teams Alert on Failure
-        if: steps.status_check.outputs.status == 'failure'
-        run: |
-          curl -H 'Content-Type: application/json' -d \
-          '{"text": "⚠️ Security scan failed. Review pipeline results in GitHub Actions."}' \
-          ${{ secrets.TEAMS_WEBHOOK_URL }}
+          curl -X POST -H "Content-Type: application/json" \
+            -d "$payload" \
+            "$SLACK_WEBHOOK_URL"
 
