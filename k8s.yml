@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: insecure-app
+  labels:
+    app: insecure-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: insecure-app
+  template:
+    metadata:
+      labels:
+        app: insecure-app
+    spec:
+      containers:
+        - name: insecure-container
+          image: nginx:latest        # ❌ 'latest' tag — non-pinned version
+          ports:
+            - containerPort: 80
+          securityContext:
+            privileged: true         # ❌ Runs with full host privileges
+            runAsUser: 0             # ❌ Running as root user
+          env:
+            - name: APP_SECRET
+              value: "plaintext-password"   # ❌ Hard-coded secret
+          volumeMounts:
+            - name: host-volume
+              mountPath: /data       # ❌ Host path mount = container escape risk
+      volumes:
+        - name: host-volume
+          hostPath:
+            path: /var/lib           # ❌ Host path — dangerous
+
