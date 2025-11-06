@@ -1,0 +1,61 @@
+name: Security Scanning Pipeline
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+
+      - name: Gitleaks Secret Scan
+        uses: docker://zricethezav/gitleaks:latest
+        with:
+          args: detect --source=/github/workspace --report-path=/github/workspace/gitleaks-report.json
+        continue-on-error: true
+
+      - name: Trivy Config Scan
+        uses: docker://aquasec/trivy:latest
+        with:
+          args: config /github/workspace
+        continue-on-error: true
+
+      - name: Build Docker Image
+        run: docker build -t testapp .
+        continue-on-error: true
+
+      - name: Trivy Image Scan
+        run: docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image testapp
+        continue-on-error: true
+
+      - name: Checkov IaC Scan
+        run: docker run --rm -v ${{ github.workspace }}:/scan bridgecrew/checkov:latest -d /scan
+        continue-on-error: true
+
+      - name: Determine Status
+        id: status_check
+        run: |
+          if grep -R "FAILED" -n . || grep -R "CRITICAL" -n .; then
+            echo "status=failure" >> $GITHUB_OUTPUT
+          else
+            echo "status=success" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send Slack Alert on Failure
+        if: steps.status_check.outputs.status == 'failure'
+        run: |
+          curl -X POST -H 'Content-type: application/json' --data \
+          '{"text":"🚨 *Security Scan Failed!* One or more issues were detected in the pipeline. Please review immediately."}' \
+          ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Send Teams Alert on Failure
+        if: steps.status_check.outputs.status == 'failure'
+        run: |
+          curl -H 'Content-Type: application/json' -d \
+          '{"text": "⚠️ Security scan failed. Review pipeline results in GitHub Actions."}' \
+          ${{ secrets.TEAMS_WEBHOOK_URL }}
+
